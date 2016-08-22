@@ -232,18 +232,25 @@ namespace hpx { namespace parallel { namespace util
                         if (parts & 0x7)
                             p = hpx::launch::sync;
 
-                        FwdIter it = hpx::util::get<0>(elem);
-                        std::size_t size = hpx::util::get<1>(elem);
+                        FwdIter b = hpx::util::get<0>(elem);
+                        std::size_t s = hpx::util::get<1>(elem);
 
-                        hpx::shared_future<Result1> prev = workitems.back();
-                        auto curr = executor_traits::async_execute(
-                            policy.executor(), f1, it, size).share();
-
-                        workitems.push_back(dataflow(p, f2, prev, curr));
-
-                        finalitems.push_back(dataflow(policy.executor(),
-                            f3, it, size, prev, curr));
-
+                        hpx::shared_future<Result1> f = workitems.back();
+                        workitems.push_back(
+                            dataflow(
+                                p, f2, std::move(f),
+                                executor_traits::async_execute(
+                                    policy.executor(), f1, b, s
+                                )
+                            )
+                        );
+                        finalitems.push_back(
+                            dataflow(
+                                policy.executor(),
+                                hpx::util::bind(f3, b, s, _1),
+                                workitems[parts - 1], workitems[parts]
+                            )
+                        );
                         ++parts;
                     }
                 }
@@ -254,6 +261,7 @@ namespace hpx { namespace parallel { namespace util
                 catch (...) {
                     errors.push_back(boost::current_exception());
                 }
+                
 
                 // wait for all tasks to finish
                 return dataflow(
